@@ -8,7 +8,7 @@ If you want to show off what you're doing in Blender, then this is the addon for
 
 * **Multi-instance support:** If multiple Blender windows are open, the one that was most recently saved will send data to Discord.
 * **Rendering mode:** Will show info about current render, as shown in the above image. It will have different text if rendering a single frame.
-* **Blender Version:** Displays the current Blender version in a nice format when hovering over the Blender icon. For example: "2.81a Alpha"
+* **Blender Version:** Displays the current Blender version in a nice format when hovering over the Blender icon.
 * **Options:** Allows a few settings to be changed on the Blender addon screen, more info below.
 
 ## Options
