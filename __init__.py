@@ -22,16 +22,19 @@ rpcConn = rpc.Presence("674448359850901546")
 iconBlender = 'blender'
 # Get the temp directory of the system based on Blender's temp dir
 pidFilePath = os.path.join(os.path.dirname(os.path.normpath(bpy.app.tempdir)), "BlendRpcPid")
-# Start time of the activity
-# This will change based on state changes
+# Start time of the Blender session
 startTime = None
-# Current state of the program, will change 
-isRendering = False
-# Only relevent if `isRendering` is True
-# The current amount of rendered frames
-# Couldn't find a way to determine if Blender is currently rendering
-#   a single frame or animation, this is a workaround
-renderedFrames = 0
+# Info on a rendering session
+renderContext = None
+
+class RenderInfo:
+    def __init__(self):
+        self.startTime = time.time()
+        self.renderedFrames = 0
+
+    @property
+    def isAnimation(self):
+        return self.renderedFrames > 0
 
 
 def register():
@@ -48,6 +51,7 @@ def register():
     bpy.app.handlers.render_complete.append(endRenderJobHandler)
     bpy.app.handlers.render_cancel.append(endRenderJobHandler)
     bpy.app.handlers.render_post.append(postRenderHandler)
+    bpy.app.handlers.load_post.append(fileLoadHandler)
 
 def unregister():
     global startTime
@@ -63,6 +67,7 @@ def unregister():
     bpy.app.handlers.render_complete.remove(endRenderJobHandler)
     bpy.app.handlers.render_cancel.remove(endRenderJobHandler)
     bpy.app.handlers.render_post.remove(postRenderHandler)
+    bpy.app.handlers.load_post.remove(fileLoadHandler)
 
 def writePidFileAtomic():
     """Write the process pid to a file
@@ -104,26 +109,26 @@ def writePidHandler(*args):
 @bpy.app.handlers.persistent
 def startRenderJobHandler(*args):
     """Run when Blender enters Rendering mode"""
-    global isRendering
-    global startTime
-    isRendering = True
-    startTime = time.time()
+    global renderContext
+    renderContext = RenderInfo()
 
 @bpy.app.handlers.persistent
 def endRenderJobHandler(*args):
     """Run when Blender exits Rendering mode"""
-    global isRendering
-    global renderedFrames
-    global startTime
-    isRendering = False
-    renderedFrames = 0
-    startTime = time.time()
+    global renderContext
+    renderContext = None
 
 @bpy.app.handlers.persistent
 def postRenderHandler(*args):
     """Run when Blender finishes rendering a frame"""
-    global renderedFrames
-    renderedFrames += 1
+    global renderContext
+    renderContext.renderedFrames += 1
+
+@bpy.app.handlers.persistent
+def fileLoadHandler(*args):
+    """Run when Blender loads a .blend file"""
+    global startTime
+    startTime = time.time()
     
 def updatePresenceTimer():
     updatePresence()
@@ -138,7 +143,16 @@ def updatePresence():
     Since this needs to compete with other Blender instances,
       check the current pid in the file, and write if there is 
       nothing there. If other instances delete this file,
-      just write this processes' pid and continue. 
+      just write this process's pid and continue.
+
+    ------------------------------
+    |   ________                 |
+    |  |        |  Blender       |
+    |  | (Icon) |  (details)     |
+    |  |        |  (state)       |
+    |  |________|  (startTime)   |
+    |                            |
+    ------------------------------
     """
     # Pre-Checks
     readPid = readPidFile()
@@ -152,14 +166,14 @@ def updatePresence():
     prefs = bpy.context.preferences.addons[__name__].preferences
 
     # Details and State
-    if isRendering:
+    if renderContext:
         # Rendering Details (prefs)
         if prefs.renderingDisplay == "DISPLAYFILENAME" and getFileName():
             activityDescription = f"Rendering {getFileName()}"
         else:
             activityDescription = f"Rendering in {getRenderEngineStr()}"
         # Rendering State
-        if renderedFrames > 0:
+        if renderContext.isAnimation:
             frameRange = getFrameRange()
             activityState = f"Frame {frameRange[0]} of {frameRange[1]}"
         else:
@@ -173,10 +187,10 @@ def updatePresence():
             activityDescription = "Editing an unsaved file"
 
     # Start Time (prefs)
-    if prefs.displayTime and not isRendering:
+    if prefs.displayTime and not renderContext:
         fStartTime = startTime
-    elif prefs.displayTimeRendering and isRendering:
-        fStartTime = startTime
+    elif prefs.displayTimeRendering and renderContext:
+        fStartTime = renderContext.startTime
     else:
         fStartTime = None
 
