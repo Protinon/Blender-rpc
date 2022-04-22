@@ -9,7 +9,7 @@ bl_info = {
     "name": "Blender Rich Presence",
     "description": "Discord Rich Presence support for Blender",
     "author": "Protinon",
-    "version": (1, 0, 0),
+    "version": (1, 1, 0),
     "blender": (2, 80, 0),
     "tracker_url": "https://github.com/Protinon/Blender-rpc",
     "category": "System",
