@@ -9,8 +9,8 @@ bl_info = {
     "name": "Blender Rich Presence",
     "description": "Discord Rich Presence support for Blender",
     "author": "Protinon",
-    "version": (1, 1, 0),
-    "blender": (2, 80, 0),
+    "version": (1, 2, 0),
+    "blender": (4, 0, 0),
     "tracker_url": "https://github.com/Protinon/Blender-rpc",
     "category": "System",
 }
@@ -219,14 +219,13 @@ def getFileName():
 def getVersionStr():
     """Easy-to-read Blender version"""
     verTup = bpy.app.version
-    verChar = bpy.app.version_char
     verCycle = {
         "release": "Release",
         "rc": "Release Candidate",
         "beta": "Beta",
         "alpha": "Alpha"
     }.get(bpy.app.version_cycle, "")
-    return f"{verTup[0]}.{verTup[1]}{verChar} {verCycle}"
+    return f"{verTup[0]}.{verTup[1]} {verCycle}"
 
 def getRenderEngineStr():
     """Selected render engine"""
