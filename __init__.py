@@ -2,6 +2,7 @@ import bpy
 import os
 import sys
 import time
+import threading
 from .pypresence import pypresence as rpc
 
 
@@ -9,7 +10,7 @@ bl_info = {
     "name": "Blender Rich Presence",
     "description": "Discord Rich Presence support for Blender",
     "author": "Protinon",
-    "version": (1, 2, 0),
+    "version": (1, 3, 0),
     "blender": (4, 0, 0),
     "tracker_url": "https://github.com/Protinon/Blender-rpc",
     "category": "System",
@@ -17,7 +18,8 @@ bl_info = {
 
 
 # Blender Bot ID
-rpcConn = rpc.Presence("674448359850901546")
+rpcConn = None
+rpcConnThread = None
 # Name of Blender icon that has been uploaded to the discord bot
 iconBlender = 'blender'
 # Get the temp directory of the system based on Blender's temp dir
@@ -26,6 +28,10 @@ pidFilePath = os.path.join(os.path.dirname(os.path.normpath(bpy.app.tempdir)), "
 startTime = None
 # Info on a rendering session
 renderContext = None
+# For logging errorss.
+# If users have many addons installed, good to know which one is generating problems!
+logPrefix = "[Blender-rpc]"
+
 
 class RenderInfo:
     def __init__(self):
@@ -36,13 +42,42 @@ class RenderInfo:
     def isAnimation(self):
         return self.renderedFrames > 0
 
+def connectToDiscord(currentTry = 0):
+    global rpcConn
+
+    try:
+        rpcConn = rpc.Presence("674448359850901546")
+        rpcConn.connect()
+        print(f"{logPrefix} Connected to Discord!")
+        return
+    except rpc.ConnectionTimeout:
+        if currentTry >= 3:
+            print(f"{logPrefix} Connection aborted")
+            return
+        print(f"{logPrefix} Connection failed ({currentTry+1}/3)")
+        connectToDiscord(currentTry=currentTry+1)
+    except rpc.InvalidID:
+        print(f"{logPrefix} Discord bot ID invalid. Please report to developer on Github")
+        print(f"{logPrefix} https://github.com/Protinon/Blender-rpc/issues")
+    except rpc.DiscordNotFound:
+        print(f"{logPrefix} Discord was not found. Aborting.")
+    except rpc.InvalidPipe:
+        print(f"{logPrefix} Invalid IPC pipe. Aborting.")
+    except rpc.DiscordError as ex:
+        print(f"{logPrefix} Unknown Discord error: {ex}. Aborting.")
+    except Exception as ex:
+        print(f"{logPrefix} Unknown error: {ex}. Aborting.")
+    
+    rpcConn = None
 
 def register():
     global startTime
 
     bpy.utils.register_class(RpcPreferences)
     startTime = time.time()
-    rpcConn.connect()
+    rpcConnThread = threading.Thread()
+    rpcConnThread.run = connectToDiscord
+    rpcConnThread.start()
     writePidFileAtomic()
     bpy.app.timers.register(updatePresenceTimer, first_interval=1.0, persistent=True)
     bpy.app.handlers.save_post.append(writePidHandler)
@@ -57,7 +92,8 @@ def unregister():
     global startTime
 
     startTime = None
-    rpcConn.close()
+    if rpcConn is not None:
+        rpcConn.close()
     removePidFile()
     bpy.app.timers.unregister(updatePresenceTimer)
     bpy.app.handlers.save_post.remove(writePidHandler)
@@ -155,6 +191,8 @@ def updatePresence():
     ------------------------------
     """
     # Pre-Checks
+    if rpcConn is None:
+        return
     readPid = readPidFile()
     if readPid is None:
         writePidFileAtomic()
