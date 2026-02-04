@@ -17,7 +17,11 @@ bl_info = {
 }
 
 
-# Blender Bot ID
+# Discord Client IDs
+CLIENT_ID_BLENDER = "674448359850901546"
+CLIENT_ID_GOO_ENGINE = "1468694115389542511"
+
+# RPC Connection
 rpcConn = None
 rpcConnThread = None
 # Name of Blender icon that has been uploaded to the discord bot
@@ -42,11 +46,39 @@ class RenderInfo:
     def isAnimation(self):
         return self.renderedFrames > 0
 
+def is_goo_engine():
+    """True if version string contains 'goo' (A Blender fork)."""
+    try:
+        return "goo" in bpy.app.version_string.lower()
+    except Exception:
+        return False
+
+
+def get_discord_client_id():
+    """Return Discord client ID for current engine (Blender or Goo Engine)."""
+    try:
+        prefs = bpy.context.preferences.addons[__name__].preferences
+        override = prefs.engineOverride
+    except Exception:
+        override = "AUTO"
+
+    if override == "GOO_ENGINE":
+        print(f"{logPrefix} Using Goo Engine (override)")
+        return CLIENT_ID_GOO_ENGINE
+    if override == "BLENDER":
+        print(f"{logPrefix} Using Blender (override)")
+        return CLIENT_ID_BLENDER
+
+    use_goo = is_goo_engine()
+    print(f"{logPrefix} Using {'Goo Engine' if use_goo else 'Blender'} (version: {bpy.app.version_string})")
+    return CLIENT_ID_GOO_ENGINE if use_goo else CLIENT_ID_BLENDER
+
 def connectToDiscord(currentTry = 0):
     global rpcConn
 
     try:
-        rpcConn = rpc.Presence("674448359850901546")
+        client_id = get_discord_client_id()
+        rpcConn = rpc.Presence(client_id)
         rpcConn.connect()
         print(f"{logPrefix} Connected to Discord!")
         return
@@ -69,6 +101,21 @@ def connectToDiscord(currentTry = 0):
         print(f"{logPrefix} Unknown error: {ex}. Aborting.")
     
     rpcConn = None
+
+def reconnectToDiscord():
+    """Disconnect and reconnect with current client ID (e.g. after engine override change). Waits 2s before reconnecting so Discord can release the previous app."""
+    global rpcConn
+    if rpcConn is not None:
+        try:
+            rpcConn.clear()
+            rpcConn.close()
+        except Exception:
+            pass
+        rpcConn = None
+    def connectAfterDelay():
+        time.sleep(2)
+        connectToDiscord()
+    threading.Thread(target=connectAfterDelay).start()
 
 def register():
     global startTime
@@ -301,7 +348,23 @@ class RpcPreferences(bpy.types.AddonPreferences):
         ),
     )
 
+    engineOverride: bpy.props.EnumProperty(
+        name="Engine Override (may take up to 30s to reflect)",
+        description="Manually override engine detection (useful if auto-detection fails). Changes may take up to 30 seconds to reflect on Discord",
+        items=(
+            ("AUTO", "Auto-detect", "Automatically detect Blender vs Goo Engine"),
+            ("BLENDER", "Force Blender", "Always use Blender Discord app"),
+            ("GOO_ENGINE", "Force Goo Engine", "Always use Goo Engine Discord app"),
+        ),
+        default="AUTO",
+        update=lambda self, context: reconnectToDiscord(),
+    )
+
     def draw(self, context):
         self.layout.prop(self, "displayTime")
         self.layout.prop(self, "displayTimeRendering")
         self.layout.prop(self, "renderingDisplay")
+        self.layout.prop(self, "engineOverride")
+        if self.engineOverride == "AUTO":
+            detected = "Goo Engine" if is_goo_engine() else "Blender"
+            self.layout.label(text=f"Detected: {detected}", icon="INFO")
