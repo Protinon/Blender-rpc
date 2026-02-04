@@ -10,7 +10,7 @@ bl_info = {
     "name": "Blender Rich Presence",
     "description": "Discord Rich Presence support for Blender",
     "author": "Protinon",
-    "version": (1, 3, 0),
+    "version": (1, 4, 0),
     "blender": (4, 0, 0),
     "tracker_url": "https://github.com/Protinon/Blender-rpc",
     "category": "System",
@@ -93,6 +93,7 @@ def unregister():
 
     startTime = None
     if rpcConn is not None:
+        rpcConn.clear()
         rpcConn.close()
     removePidFile()
     bpy.app.timers.unregister(updatePresenceTimer)
